@@ -57,9 +57,11 @@ To set up on an Ubuntu production server:
 The setup script will:
 - Install Node.js 22 and gemini-cli
 - Create the `dailynews` service user
-- Clone the repository (if not already cloned)
-- Set up systemd timers for 7am and 10am runs
+- Clone/update the repository
+- Set up crontab entries for 7am and 10am runs
 - Create the `.env` file from template
+
+**Note**: The setup script is idempotent - safe to run multiple times without breaking existing configuration.
 
 ## Cyber Security News
 
