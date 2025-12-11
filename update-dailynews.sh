@@ -41,8 +41,20 @@ sudo -u $SERVICE_USER git reset --hard origin/main
 echo "✓ Repository updated to latest version"
 echo ""
 
-echo "[2/3] Running setup script to apply any configuration changes..."
+echo "[2/3] Updating packages and configuration..."
+
+# Update gemini-cli if installed
+if npm list -g @google/gemini-cli &>/dev/null; then
+    echo "Updating gemini-cli..."
+    npm install -g @google/gemini-cli
+    echo "✓ gemini-cli updated"
+else
+    echo "⚠ gemini-cli not installed, run setup script first"
+fi
+
+# Run setup script to apply any configuration changes
 if [ -f "$DEPLOY_PATH/setup-dailynews-production.sh" ]; then
+    echo "Running setup script to apply configuration changes..."
     bash "$DEPLOY_PATH/setup-dailynews-production.sh" "$DEPLOY_PATH"
     echo "✓ Setup script completed"
 else

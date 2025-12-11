@@ -46,14 +46,13 @@ else
     echo "Node.js $(node -v) already installed"
 fi
 
-# Install gemini-cli globally
+# Install gemini-cli globally (only if not already installed)
 echo "[3/9] Installing gemini-cli..."
 if ! npm list -g @google/gemini-cli &>/dev/null; then
     npm install -g @google/gemini-cli
-    echo "gemini-cli installed"
+    echo "✓ gemini-cli installed"
 else
-    echo "gemini-cli already installed, updating..."
-    npm install -g @google/gemini-cli
+    echo "✓ gemini-cli already installed, skipping (use update script to update)"
 fi
 
 # Create service user
