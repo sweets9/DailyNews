@@ -4,7 +4,7 @@ Automated daily cyber security news aggregator that fetches the latest security 
 
 ## How It Works
 
-1. Script runs daily at 7:00 AM and 10:00 AM (UTC)
+1. Script runs daily at 7:00 AM and 10:00 AM (via crontab)
 2. Fetches latest cyber security news using Gemini CLI
 3. Saves news items to `newsitems/` directory
 4. Updates this README with links to new items
