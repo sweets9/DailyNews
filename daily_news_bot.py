@@ -8,6 +8,8 @@ import feedparser
 from datetime import datetime, timedelta
 import os
 import sys
+import re
+import html
 from git import Repo
 
 
@@ -67,16 +69,10 @@ def fetch_articles_from_feeds(cutoff_time):
 
 def clean_html_tags(text):
     """Remove HTML tags from text using simple string manipulation."""
-    import re
     # Remove HTML tags
     text = re.sub('<[^<]+?>', '', text)
     # Decode HTML entities
-    text = text.replace('&nbsp;', ' ')
-    text = text.replace('&amp;', '&')
-    text = text.replace('&lt;', '<')
-    text = text.replace('&gt;', '>')
-    text = text.replace('&quot;', '"')
-    text = text.replace('&#39;', "'")
+    text = html.unescape(text)
     return text.strip()
 
 
@@ -109,8 +105,6 @@ def generate_markdown_content(articles, date_str):
         if len(summary) > 500:
             summary = summary[:500] + "..."
         content += f"**Description:** {summary}\n\n"
-        
-        content += "**Why it matters?:** This article provides important insights into recent cyber security developments that could impact organizations and individuals.\n\n"
         
         content += f"**Link:** [{article['link']}]({article['link']})\n\n"
         content += f"**Source:** {article['source']} | **Published:** {article['published'].strftime('%Y-%m-%d %H:%M UTC')}\n\n"
@@ -227,14 +221,20 @@ def git_commit_and_push(repo_path, date_str):
             repo.index.commit(commit_message)
             print(f"Committed changes: {commit_message}")
             
-            # Push to origin main
+            # Push to origin main (or HEAD if main doesn't exist)
             try:
                 origin = repo.remote('origin')
-                origin.push('main')
-                print("Pushed changes to origin main")
+                # Try to push to main branch
+                try:
+                    origin.push('main')
+                    print("Pushed changes to origin main")
+                except Exception:
+                    # If main doesn't exist, try pushing HEAD to current branch
+                    current_branch = repo.active_branch.name
+                    origin.push(current_branch)
+                    print(f"Pushed changes to origin {current_branch}")
             except Exception as push_error:
-                print(f"Note: Could not push to origin main: {push_error}")
-                print("This is expected if you're not on the main branch.")
+                print(f"Note: Could not push to origin: {push_error}")
                 print("The changes have been committed locally.")
         else:
             print("No changes to commit")
