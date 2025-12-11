@@ -8,7 +8,9 @@ Automated daily cyber security news aggregator that fetches the latest security 
 2. Fetches latest cyber security news using Gemini CLI
 3. Saves news items to `newsitems/` directory
 4. Updates this README with links to new items
-5. Commits and pushes changes to both Gitea and GitHub
+5. Commits and pushes changes:
+   - **Gitea**: All files (including scripts)
+   - **GitHub**: Only README.md and newsitems/ (scripts excluded for security)
 
 ## Repository Configuration
 

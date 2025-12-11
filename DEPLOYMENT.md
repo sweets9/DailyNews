@@ -40,9 +40,13 @@ Configure these in your GitHub repository settings (Settings → Secrets and var
 
 ### Repository Configuration:
 
-The script pushes directly to both remotes:
-- **origin**: Gitea repository (`git.sweet6.net/Sweet6/DailyNews`)
-- **github**: GitHub repository (`sweets9/DailyNews`)
+The script pushes to both remotes with different content:
+- **origin (Gitea)**: All files including scripts, configuration, and documentation
+- **github (GitHub)**: Only README.md and newsitems/ directory (scripts excluded for security)
+
+This ensures that:
+- Internal scripts and configuration remain private in Gitea
+- Only public-facing content (news items and README) are published to GitHub
 
 Both remotes must be configured on the production server. See `GIT_REMOTES_SETUP.md` for detailed setup instructions.
 
