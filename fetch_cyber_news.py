@@ -341,6 +341,20 @@ def git_commit_and_push(filename):
             print(f"Error adding files to git: {result.stderr}", file=sys.stderr)
             return False
         
+        # Pull latest changes before committing to avoid conflicts
+        print("Pulling latest changes from repository...")
+        result = subprocess.run(
+            ["git", "pull", "origin", "main", "--no-edit"],
+            capture_output=True,
+            text=True,
+            cwd=SCRIPT_DIR,
+            timeout=60
+        )
+        
+        if result.returncode != 0:
+            print(f"Warning: Failed to pull from origin: {result.stderr}", file=sys.stderr)
+            print("Attempting to continue with commit...")
+        
         # Commit changes
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
         commit_message = f"Add cyber security news update - {timestamp}"
@@ -354,8 +368,12 @@ def git_commit_and_push(filename):
         )
         
         if result.returncode != 0:
-            print(f"Error committing changes: {result.stderr}", file=sys.stderr)
-            return False
+            # Check if there's nothing to commit
+            if "nothing to commit" in result.stdout or "nothing to commit" in result.stderr:
+                print("No changes to commit (may have been merged during pull)")
+            else:
+                print(f"Error committing changes: {result.stderr}", file=sys.stderr)
+                return False
         
         # Push to origin (Gitea)
         result = subprocess.run(
