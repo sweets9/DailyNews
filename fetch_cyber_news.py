@@ -341,10 +341,20 @@ def git_commit_and_push(filename):
             print(f"Error adding files to git: {result.stderr}", file=sys.stderr)
             return False
         
+        # Set up branch tracking if not already set
+        result = subprocess.run(
+            ["git", "branch", "--set-upstream-to=origin/main", "main"],
+            capture_output=True,
+            text=True,
+            cwd=SCRIPT_DIR,
+            timeout=10
+        )
+        # Ignore errors (branch might already be tracking)
+        
         # Pull latest changes before committing to avoid conflicts
         print("Pulling latest changes from repository...")
         result = subprocess.run(
-            ["git", "pull", "origin", "main", "--no-edit"],
+            ["git", "pull", "origin", "main", "--no-edit", "--no-rebase"],
             capture_output=True,
             text=True,
             cwd=SCRIPT_DIR,
@@ -352,8 +362,25 @@ def git_commit_and_push(filename):
         )
         
         if result.returncode != 0:
-            print(f"Warning: Failed to pull from origin: {result.stderr}", file=sys.stderr)
-            print("Attempting to continue with commit...")
+            # If pull fails, try fetch and merge separately
+            print("Pull failed, trying fetch and merge...")
+            subprocess.run(
+                ["git", "fetch", "origin", "main"],
+                capture_output=True,
+                text=True,
+                cwd=SCRIPT_DIR,
+                timeout=60
+            )
+            result = subprocess.run(
+                ["git", "merge", "origin/main", "--no-edit"],
+                capture_output=True,
+                text=True,
+                cwd=SCRIPT_DIR,
+                timeout=60
+            )
+            if result.returncode != 0:
+                print(f"Warning: Failed to merge remote changes: {result.stderr}", file=sys.stderr)
+                print("Attempting to continue with commit...")
         
         # Commit changes
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
