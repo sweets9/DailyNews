@@ -173,10 +173,16 @@ if [ -f "$DEPLOY_PATH/.env" ]; then
     # Test git fetch to verify credentials work
     echo "Testing git credentials..."
     cd "$DEPLOY_PATH"
-    if sudo -u $SERVICE_USER git fetch origin 2>&1 | grep -q "fatal\|error"; then
-        echo "⚠ Git fetch test failed - check credentials in .env file"
-    else
+    GIT_TEST_OUTPUT=$(sudo -u $SERVICE_USER git fetch origin 2>&1)
+    GIT_TEST_EXIT=$?
+    
+    if [ $GIT_TEST_EXIT -eq 0 ]; then
         echo "✓ Git credentials verified - passwordless git pull is working"
+    else
+        echo "⚠ Git fetch test failed (exit code: $GIT_TEST_EXIT)"
+        echo "   Output: $GIT_TEST_OUTPUT"
+        echo "   This might be normal if credentials need to be set up first"
+        echo "   After configuring .env, credentials will be used automatically"
     fi
     cd - > /dev/null
 else
@@ -228,9 +234,10 @@ if ! command -v crontab &> /dev/null; then
     apt-get install -y cron
 fi
 
-# Create temporary crontab file
-CRON_TEMP=$(mktemp)
-sudo -u $SERVICE_USER crontab -l > "$CRON_TEMP" 2>/dev/null || true
+# Create temporary crontab file in a location accessible by the service user
+CRON_TEMP=$(mktemp /tmp/crontab.XXXXXX)
+chmod 666 "$CRON_TEMP"  # Make it readable/writable
+sudo -u $SERVICE_USER crontab -l > "$CRON_TEMP" 2>/dev/null || touch "$CRON_TEMP"
 
 # Remove existing DailyNews entries if they exist
 sed -i '/DailyNews/d' "$CRON_TEMP" 2>/dev/null || true
@@ -246,7 +253,9 @@ cat >> "$CRON_TEMP" << EOF
 0 10 * * * /usr/bin/python3 $DEPLOY_PATH/fetch_cyber_news.py >> $DEPLOY_PATH/cron.log 2>&1
 EOF
 
-# Install the crontab
+# Change ownership to service user and install the crontab
+chown $SERVICE_USER:$SERVICE_USER "$CRON_TEMP" 2>/dev/null || true
+chmod 600 "$CRON_TEMP"  # Secure permissions before installing
 sudo -u $SERVICE_USER crontab "$CRON_TEMP"
 rm -f "$CRON_TEMP"
 
@@ -277,20 +286,43 @@ systemctl start cron 2>/dev/null || systemctl start crond 2>/dev/null || true
 # Create SSH key for CI/CD (if needed)
 echo "[8/9] Setting up SSH for CI/CD..."
 SSH_DIR="/home/$SERVICE_USER/.ssh"
+
+# Ensure home directory exists and has correct permissions
+if [ ! -d "/home/$SERVICE_USER" ]; then
+    mkdir -p "/home/$SERVICE_USER"
+    chown $SERVICE_USER:$SERVICE_USER "/home/$SERVICE_USER"
+fi
+
+# Create .ssh directory with correct permissions
 mkdir -p "$SSH_DIR"
+chown $SERVICE_USER:$SERVICE_USER "$SSH_DIR"
 chmod 700 "$SSH_DIR"
 
 if [ ! -f "$SSH_DIR/id_rsa" ]; then
     echo "Generating SSH key for CI/CD deployment..."
-    sudo -u $SERVICE_USER ssh-keygen -t rsa -b 4096 -f "$SSH_DIR/id_rsa" -N "" -C "dailynews-deploy"
-    echo ""
-    echo "=========================================="
-    echo "IMPORTANT: Add this public key to your CI/CD secrets:"
-    echo "=========================================="
-    cat "$SSH_DIR/id_rsa.pub"
-    echo ""
-    echo "Add this as PROD_SSH_KEY secret in GitHub Actions"
-    echo "=========================================="
+    # Generate key as the service user
+    sudo -u $SERVICE_USER ssh-keygen -t rsa -b 4096 -f "$SSH_DIR/id_rsa" -N "" -C "dailynews-deploy" 2>&1
+    
+    # Verify key was created
+    if [ -f "$SSH_DIR/id_rsa.pub" ]; then
+        echo ""
+        echo "=========================================="
+        echo "IMPORTANT: Add this public key to your CI/CD secrets:"
+        echo "=========================================="
+        cat "$SSH_DIR/id_rsa.pub"
+        echo ""
+        echo "Add this as PROD_SSH_KEY secret in GitHub Actions"
+        echo "=========================================="
+    else
+        echo "⚠ Warning: SSH key generation may have failed"
+        echo "   Check permissions on $SSH_DIR"
+    fi
+else
+    echo "SSH key already exists, skipping generation"
+    if [ -f "$SSH_DIR/id_rsa.pub" ]; then
+        echo "Public key:"
+        cat "$SSH_DIR/id_rsa.pub"
+    fi
 fi
 
 # Set up git config for service user (if not already done)
