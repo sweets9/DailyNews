@@ -60,8 +60,24 @@ The setup script will:
 - Clone/update the repository
 - Set up crontab entries for 7am and 10am runs
 - Create the `.env` file from template
+- Configure git credentials securely
 
 **Note**: The setup script is idempotent - safe to run multiple times without breaking existing configuration.
+
+## Updating
+
+To update the installation with latest changes:
+
+```bash
+sudo bash /opt/DailyNews/update-dailynews.sh
+```
+
+This will:
+- Pull latest changes from the repository
+- Re-run the setup script to apply any configuration changes
+- Verify the installation
+
+**Note**: Always use `/opt/DailyNews` (capital D and N) as the deployment path.
 
 ## Cyber Security News
 
