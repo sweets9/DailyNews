@@ -88,6 +88,10 @@ echo "Configuring git for service user..."
 sudo -u $SERVICE_USER git -C "$DEPLOY_PATH" config user.name "DailyNews Bot" || true
 sudo -u $SERVICE_USER git -C "$DEPLOY_PATH" config user.email "dailynews@$(hostname)" || true
 
+# Configure git credential helper to store credentials
+echo "Configuring git credential storage..."
+sudo -u $SERVICE_USER git config --global credential.helper store || true
+
 # Create .env file from example
 echo "Setting up .env file for credentials..."
 if [ -f "$DEPLOY_PATH/.env.example" ]; then
@@ -110,6 +114,45 @@ if [ -f "$DEPLOY_PATH/.env.example" ]; then
     fi
 else
     echo "Warning: .env.example not found. Create .env manually with credentials."
+fi
+
+# Configure git remotes with credentials from .env (if available)
+echo "Configuring git remotes with credentials..."
+if [ -f "$DEPLOY_PATH/.env" ]; then
+    # Source .env file to get credentials
+    set +a  # Don't export variables
+    source "$DEPLOY_PATH/.env" 2>/dev/null || true
+    set -a
+    
+    # Configure origin (Gitea) remote with credentials
+    if [ -n "$GITEA_USERNAME" ] && [ -n "$GITEA_PASSWORD" ]; then
+        GITEA_URL_WITH_AUTH="https://${GITEA_USERNAME}:${GITEA_PASSWORD}@git.sweet6.net/Sweet6/DailyNews"
+        sudo -u $SERVICE_USER git -C "$DEPLOY_PATH" remote set-url origin "$GITEA_URL_WITH_AUTH" 2>/dev/null || \
+        sudo -u $SERVICE_USER git -C "$DEPLOY_PATH" remote add origin "$GITEA_URL_WITH_AUTH" 2>/dev/null || true
+        echo "✓ Configured Gitea remote with credentials"
+    else
+        echo "⚠ Gitea credentials not found in .env, remote may prompt for credentials"
+    fi
+    
+    # Configure github remote with credentials (if configured)
+    if [ -n "$GITHUB_TOKEN" ]; then
+        GITHUB_USER="${GITHUB_USERNAME:-sweets9}"
+        GITHUB_URL_WITH_AUTH="https://${GITHUB_USER}:${GITHUB_TOKEN}@github.com/sweets9/DailyNews.git"
+        sudo -u $SERVICE_USER git -C "$DEPLOY_PATH" remote set-url github "$GITHUB_URL_WITH_AUTH" 2>/dev/null || \
+        sudo -u $SERVICE_USER git -C "$DEPLOY_PATH" remote add github "$GITHUB_URL_WITH_AUTH" 2>/dev/null || true
+        echo "✓ Configured GitHub remote with credentials"
+    else
+        echo "⚠ GitHub token not found in .env, GitHub remote not configured"
+    fi
+    
+    # Test git pull to store credentials
+    echo "Testing git credentials..."
+    cd "$DEPLOY_PATH"
+    sudo -u $SERVICE_USER git fetch origin 2>&1 | head -1 || true
+    cd - > /dev/null
+else
+    echo "⚠ .env file not found, cannot configure git credentials automatically"
+    echo "   After creating .env, run the setup script again or configure manually"
 fi
 
 # Make script executable
@@ -221,7 +264,7 @@ if [ ! -f "$SSH_DIR/id_rsa" ]; then
     echo "=========================================="
 fi
 
-# Set up git config for service user
+# Set up git config for service user (if not already done)
 sudo -u $SERVICE_USER git -C "$DEPLOY_PATH" config user.name "DailyNews Bot" || true
 sudo -u $SERVICE_USER git -C "$DEPLOY_PATH" config user.email "dailynews@$(hostname)" || true
 
