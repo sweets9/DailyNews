@@ -235,7 +235,10 @@ def configure_git_remotes():
 
 
 def git_commit_and_push(filename):
-    """Commit changes and push to both remotes: origin (Gitea) and github (GitHub)."""
+    """Commit changes and push to remotes:
+    - Gitea (origin): All files including scripts
+    - GitHub (github): Only README.md and newsitems/ (scripts excluded)
+    """
     try:
         # Configure remotes from .env file
         configure_git_remotes()
@@ -309,7 +312,7 @@ def git_commit_and_push(filename):
         else:
             print("Pushed changes to Gitea (origin)")
         
-        # Push to github remote (if configured)
+        # Push to github remote (if configured) - only README.md and newsitems/
         result = subprocess.run(
             ["git", "remote", "show", "github"],
             capture_output=True,
@@ -319,19 +322,106 @@ def git_commit_and_push(filename):
         )
         
         if result.returncode == 0:
-            # GitHub remote exists, push to it
-            result = subprocess.run(
-                ["git", "push", "github", "main"],
-                capture_output=True,
-                text=True,
-                cwd=SCRIPT_DIR,
-                timeout=60
-            )
-            
-            if result.returncode != 0:
-                print(f"Warning: Failed to push to GitHub: {result.stderr}", file=sys.stderr)
-            else:
-                print("Pushed changes to GitHub (github remote)")
+            # GitHub remote exists - push only README.md and newsitems/
+            # Use a filtered approach: create a temporary branch with only these files
+            try:
+                # Get current branch name
+                branch_result = subprocess.run(
+                    ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+                    capture_output=True,
+                    text=True,
+                    cwd=SCRIPT_DIR,
+                    timeout=10
+                )
+                current_branch = branch_result.stdout.strip() if branch_result.returncode == 0 else "main"
+                
+                # Create a temporary orphan branch for GitHub (only content, no history)
+                github_branch = "github-publish"
+                
+                # Check if branch exists, delete if it does
+                subprocess.run(
+                    ["git", "branch", "-D", github_branch],
+                    capture_output=True,
+                    cwd=SCRIPT_DIR,
+                    timeout=10
+                )
+                
+                # Create orphan branch
+                subprocess.run(
+                    ["git", "checkout", "--orphan", github_branch],
+                    capture_output=True,
+                    cwd=SCRIPT_DIR,
+                    timeout=10
+                )
+                
+                # Remove all files from staging
+                subprocess.run(
+                    ["git", "rm", "-rf", "--cached", "."],
+                    capture_output=True,
+                    cwd=SCRIPT_DIR,
+                    timeout=10
+                )
+                
+                # Add only README.md and newsitems/
+                subprocess.run(
+                    ["git", "add", "README.md", "newsitems/"],
+                    capture_output=True,
+                    cwd=SCRIPT_DIR,
+                    timeout=10
+                )
+                
+                # Commit
+                timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
+                commit_msg = f"Update cyber security news - {timestamp}"
+                subprocess.run(
+                    ["git", "commit", "-m", commit_msg],
+                    capture_output=True,
+                    cwd=SCRIPT_DIR,
+                    timeout=10
+                )
+                
+                # Push to GitHub
+                result = subprocess.run(
+                    ["git", "push", "github", f"{github_branch}:main", "--force"],
+                    capture_output=True,
+                    text=True,
+                    cwd=SCRIPT_DIR,
+                    timeout=60
+                )
+                
+                # Switch back to original branch
+                subprocess.run(
+                    ["git", "checkout", current_branch],
+                    capture_output=True,
+                    cwd=SCRIPT_DIR,
+                    timeout=10
+                )
+                
+                # Clean up temporary branch
+                subprocess.run(
+                    ["git", "branch", "-D", github_branch],
+                    capture_output=True,
+                    cwd=SCRIPT_DIR,
+                    timeout=10
+                )
+                
+                if result.returncode != 0:
+                    print(f"Warning: Failed to push to GitHub: {result.stderr}", file=sys.stderr)
+                else:
+                    print("Pushed README.md and newsitems/ to GitHub (scripts excluded)")
+                    
+            except Exception as e:
+                print(f"Warning: Error pushing to GitHub: {e}", file=sys.stderr)
+                # Try to get back to original branch
+                try:
+                    subprocess.run(
+                        ["git", "checkout", current_branch],
+                        capture_output=True,
+                        cwd=SCRIPT_DIR,
+                        timeout=10
+                    )
+                except:
+                    pass
         else:
             print("Note: GitHub remote not configured. Add it with: git remote add github https://github.com/sweets9/DailyNews.git")
         
