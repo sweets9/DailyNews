@@ -179,12 +179,23 @@ sudo -u $SERVICE_USER crontab "$CRON_TEMP"
 rm -f "$CRON_TEMP"
 
 # Verify crontab was installed
-if sudo -u $SERVICE_USER crontab -l | grep -q "fetch_cyber_news.py"; then
-    echo "Crontab entries added successfully"
-    echo "Current crontab for $SERVICE_USER:"
-    sudo -u $SERVICE_USER crontab -l | grep -A 2 "DailyNews" || true
+echo ""
+echo "Verifying crontab installation..."
+if sudo -u $SERVICE_USER crontab -l 2>/dev/null | grep -q "fetch_cyber_news.py"; then
+    echo "✓ Crontab entries added successfully for user: $SERVICE_USER"
+    echo ""
+    echo "Current crontab entries for $SERVICE_USER:"
+    echo "----------------------------------------"
+    sudo -u $SERVICE_USER crontab -l 2>/dev/null | grep -A 2 "DailyNews" || sudo -u $SERVICE_USER crontab -l 2>/dev/null
+    echo "----------------------------------------"
+    echo ""
+    echo "To view/edit crontab for $SERVICE_USER user:"
+    echo "  View: sudo -u $SERVICE_USER crontab -l"
+    echo "  Edit: sudo -u $SERVICE_USER crontab -e"
 else
-    echo "Warning: Failed to verify crontab installation"
+    echo "⚠ Warning: Failed to verify crontab installation"
+    echo "Attempting to list crontab:"
+    sudo -u $SERVICE_USER crontab -l 2>/dev/null || echo "No crontab found for user $SERVICE_USER"
 fi
 
 # Ensure cron service is running
