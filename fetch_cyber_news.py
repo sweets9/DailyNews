@@ -172,30 +172,68 @@ def load_env_file():
 
 
 def configure_git_remotes():
-    """Configure git remotes using credentials from .env file."""
+    """Configure git remotes and store credentials securely using git credential helper."""
     env_vars = load_env_file()
     
     if not env_vars:
         print("Warning: .env file not found or empty. Git remotes may not be configured.", file=sys.stderr)
         return
     
-    # Configure origin (Gitea) remote
-    gitea_url = env_vars.get('GITEA_URL', '')
+    # Ensure credential helper is configured
+    subprocess.run(
+        ["git", "config", "--global", "credential.helper", "store"],
+        capture_output=True,
+        cwd=SCRIPT_DIR,
+        timeout=10
+    )
+    
+    # Get credential store path
+    home_dir = os.path.expanduser("~")
+    credential_store = os.path.join(home_dir, ".git-credentials")
+    
+    # Configure origin (Gitea) remote WITHOUT credentials in URL
+    gitea_url = env_vars.get('GITEA_URL', 'https://git.sweet6.net/Sweet6/DailyNews')
     gitea_username = env_vars.get('GITEA_USERNAME', '')
     gitea_password = env_vars.get('GITEA_PASSWORD', '')
     use_ssh = env_vars.get('GITEA_USE_SSH', 'false').lower() == 'true'
     
-    if gitea_url and not use_ssh and gitea_username and gitea_password:
-        # Update origin URL with credentials
-        origin_url = gitea_url.replace('https://', f'https://{gitea_username}:{gitea_password}@')
+    # Set remote URL without credentials
+    if not use_ssh:
+        # Remove credentials from URL if present
+        clean_url = gitea_url.replace('https://', '').split('@')[-1]
+        if not clean_url.startswith('http'):
+            clean_url = f'https://{clean_url}'
+        
         subprocess.run(
-            ["git", "remote", "set-url", "origin", origin_url],
+            ["git", "remote", "set-url", "origin", clean_url],
             capture_output=True,
             cwd=SCRIPT_DIR,
             timeout=10
         )
+        
+        # Store credentials securely in credential store
+        if gitea_username and gitea_password:
+            gitea_cred = f"https://{gitea_username}:{gitea_password}@git.sweet6.net"
+            # Read existing credentials
+            existing_creds = set()
+            if os.path.exists(credential_store):
+                with open(credential_store, 'r') as f:
+                    existing_creds = set(line.strip() for line in f if line.strip())
+            
+            # Add or update Gitea credential
+            existing_creds = {c for c in existing_creds if 'git.sweet6.net' not in c}
+            existing_creds.add(gitea_cred)
+            
+            # Write back to credential store
+            os.makedirs(os.path.dirname(credential_store), exist_ok=True)
+            with open(credential_store, 'w') as f:
+                for cred in existing_creds:
+                    f.write(cred + '\n')
+            
+            # Set proper permissions
+            os.chmod(credential_store, 0o600)
     
-    # Configure github remote
+    # Configure github remote WITHOUT credentials in URL
     github_url = env_vars.get('GITHUB_URL', 'https://github.com/sweets9/DailyNews.git')
     github_username = env_vars.get('GITHUB_USERNAME', 'sweets9')
     github_token = env_vars.get('GITHUB_TOKEN', '')
@@ -210,28 +248,50 @@ def configure_git_remotes():
         timeout=10
     )
     
-    if result.returncode != 0:
-        # Add github remote if it doesn't exist
-        if not use_ssh_github and github_token:
-            github_url_with_auth = github_url.replace('https://', f'https://{github_username}:{github_token}@')
-        else:
-            github_url_with_auth = github_url
+    # Set remote URL without credentials
+    if not use_ssh_github:
+        clean_github_url = github_url.replace('https://', '').split('@')[-1]
+        if not clean_github_url.startswith('http'):
+            clean_github_url = f'https://{clean_github_url}'
         
-        subprocess.run(
-            ["git", "remote", "add", "github", github_url_with_auth],
-            capture_output=True,
-            cwd=SCRIPT_DIR,
-            timeout=10
-        )
-    elif not use_ssh_github and github_token:
-        # Update existing github remote with credentials
-        github_url_with_auth = github_url.replace('https://', f'https://{github_username}:{github_token}@')
-        subprocess.run(
-            ["git", "remote", "set-url", "github", github_url_with_auth],
-            capture_output=True,
-            cwd=SCRIPT_DIR,
-            timeout=10
-        )
+        if result.returncode != 0:
+            # Add github remote if it doesn't exist
+            subprocess.run(
+                ["git", "remote", "add", "github", clean_github_url],
+                capture_output=True,
+                cwd=SCRIPT_DIR,
+                timeout=10
+            )
+        else:
+            # Update existing remote
+            subprocess.run(
+                ["git", "remote", "set-url", "github", clean_github_url],
+                capture_output=True,
+                cwd=SCRIPT_DIR,
+                timeout=10
+            )
+        
+        # Store GitHub credentials securely
+        if github_token:
+            github_cred = f"https://{github_username}:{github_token}@github.com"
+            # Read existing credentials
+            existing_creds = set()
+            if os.path.exists(credential_store):
+                with open(credential_store, 'r') as f:
+                    existing_creds = set(line.strip() for line in f if line.strip())
+            
+            # Add or update GitHub credential
+            existing_creds = {c for c in existing_creds if '@github.com' not in c}
+            existing_creds.add(github_cred)
+            
+            # Write back to credential store
+            os.makedirs(os.path.dirname(credential_store), exist_ok=True)
+            with open(credential_store, 'w') as f:
+                for cred in existing_creds:
+                    f.write(cred + '\n')
+            
+            # Set proper permissions
+            os.chmod(credential_store, 0o600)
 
 
 def git_commit_and_push(filename):

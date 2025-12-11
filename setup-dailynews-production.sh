@@ -88,9 +88,11 @@ echo "Configuring git for service user..."
 sudo -u $SERVICE_USER git -C "$DEPLOY_PATH" config user.name "DailyNews Bot" || true
 sudo -u $SERVICE_USER git -C "$DEPLOY_PATH" config user.email "dailynews@$(hostname)" || true
 
-# Configure git credential helper to store credentials
+# Configure git credential helper to store credentials securely
 echo "Configuring git credential storage..."
 sudo -u $SERVICE_USER git config --global credential.helper store || true
+# Set credential helper timeout (optional, but helpful)
+sudo -u $SERVICE_USER git config --global credential.helper 'cache --timeout=86400' || true
 
 # Create .env file from example
 echo "Setting up .env file for credentials..."
@@ -149,25 +151,57 @@ if [ -f "$DEPLOY_PATH/.env" ]; then
         esac
     done < "$DEPLOY_PATH/.env"
     
-    # Configure origin (Gitea) remote with credentials
+    # Configure remotes WITHOUT credentials in URL (use credential helper instead)
+    # Set remote URLs without credentials
+    GITEA_URL="https://git.sweet6.net/Sweet6/DailyNews"
+    GITHUB_URL="https://github.com/sweets9/DailyNews.git"
+    
+    # Configure origin (Gitea) remote
+    sudo -u $SERVICE_USER git -C "$DEPLOY_PATH" remote set-url origin "$GITEA_URL" 2>/dev/null || \
+    sudo -u $SERVICE_USER git -C "$DEPLOY_PATH" remote add origin "$GITEA_URL" 2>/dev/null || true
+    
+    # Configure github remote (if configured)
+    if [ -n "$GITHUB_TOKEN" ]; then
+        sudo -u $SERVICE_USER git -C "$DEPLOY_PATH" remote set-url github "$GITHUB_URL" 2>/dev/null || \
+        sudo -u $SERVICE_USER git -C "$DEPLOY_PATH" remote add github "$GITHUB_URL" 2>/dev/null || true
+        echo "✓ Configured GitHub remote (credentials will be stored securely)"
+    else
+        echo "⚠ GitHub token not found in .env, GitHub remote not configured"
+    fi
+    
+    # Store credentials securely using git credential helper
     if [ -n "$GITEA_USERNAME" ] && [ -n "$GITEA_PASSWORD" ]; then
-        GITEA_URL_WITH_AUTH="https://${GITEA_USERNAME}:${GITEA_PASSWORD}@git.sweet6.net/Sweet6/DailyNews"
-        sudo -u $SERVICE_USER git -C "$DEPLOY_PATH" remote set-url origin "$GITEA_URL_WITH_AUTH" 2>/dev/null || \
-        sudo -u $SERVICE_USER git -C "$DEPLOY_PATH" remote add origin "$GITEA_URL_WITH_AUTH" 2>/dev/null || true
-        echo "✓ Configured Gitea remote with credentials (passwordless git pull enabled)"
+        echo "Storing Gitea credentials securely..."
+        CREDENTIAL_STORE="/home/$SERVICE_USER/.git-credentials"
+        # Create credential store file
+        touch "$CREDENTIAL_STORE"
+        chown $SERVICE_USER:$SERVICE_USER "$CREDENTIAL_STORE"
+        chmod 600 "$CREDENTIAL_STORE"
+        
+        # Add Gitea credentials to store
+        GITEA_CRED="https://${GITEA_USERNAME}:${GITEA_PASSWORD}@git.sweet6.net"
+        if ! grep -q "git.sweet6.net" "$CREDENTIAL_STORE" 2>/dev/null; then
+            echo "$GITEA_CRED" >> "$CREDENTIAL_STORE"
+        else
+            # Update existing entry
+            sed -i "s|https://.*@git.sweet6.net|$GITEA_CRED|g" "$CREDENTIAL_STORE"
+        fi
+        echo "✓ Gitea credentials stored securely (passwordless git pull enabled)"
     else
         echo "⚠ Gitea credentials not found in .env, remote may prompt for credentials"
     fi
     
-    # Configure github remote with credentials (if configured)
+    # Store GitHub credentials if configured
     if [ -n "$GITHUB_TOKEN" ]; then
         GITHUB_USER="${GITHUB_USERNAME:-sweets9}"
-        GITHUB_URL_WITH_AUTH="https://${GITHUB_USER}:${GITHUB_TOKEN}@github.com/sweets9/DailyNews.git"
-        sudo -u $SERVICE_USER git -C "$DEPLOY_PATH" remote set-url github "$GITHUB_URL_WITH_AUTH" 2>/dev/null || \
-        sudo -u $SERVICE_USER git -C "$DEPLOY_PATH" remote add github "$GITHUB_URL_WITH_AUTH" 2>/dev/null || true
-        echo "✓ Configured GitHub remote with credentials"
-    else
-        echo "⚠ GitHub token not found in .env, GitHub remote not configured"
+        GITHUB_CRED="https://${GITHUB_USER}:${GITHUB_TOKEN}@github.com"
+        if ! grep -q "@github.com" "$CREDENTIAL_STORE" 2>/dev/null; then
+            echo "$GITHUB_CRED" >> "$CREDENTIAL_STORE"
+        else
+            # Update existing entry
+            sed -i "s|https://.*@github.com|$GITHUB_CRED|g" "$CREDENTIAL_STORE"
+        fi
+        echo "✓ GitHub credentials stored securely"
     fi
     
     # Test git fetch to verify credentials work
