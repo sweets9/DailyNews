@@ -75,6 +75,7 @@ if [ -d "$DEPLOY_PATH/.git" ]; then
     echo "Repository already exists, updating..."
     cd "$DEPLOY_PATH"
     sudo -u $SERVICE_USER git fetch origin || true
+    sudo -u $SERVICE_USER git branch --set-upstream-to=origin/main main 2>/dev/null || true
     sudo -u $SERVICE_USER git reset --hard origin/main || true
     cd - > /dev/null
     echo "✓ Repository updated"
@@ -83,6 +84,10 @@ else
     sudo -u $SERVICE_USER git clone "$REPO_URL" "$DEPLOY_PATH"
     if [ $? -eq 0 ]; then
         echo "✓ Repository cloned successfully"
+        # Set up branch tracking
+        cd "$DEPLOY_PATH"
+        sudo -u $SERVICE_USER git branch --set-upstream-to=origin/main main 2>/dev/null || true
+        cd - > /dev/null
     else
         echo "⚠ Warning: Repository clone may have failed"
     fi
