@@ -7,7 +7,8 @@
 #   DEPLOY_PATH: Where to deploy the repository (default: /opt/DailyNews)
 #
 
-set -e
+# Don't exit on error - make it resilient
+set +e
 
 DEPLOY_PATH="${1:-/opt/DailyNews}"
 REPO_URL="https://git.sweet6.net/Sweet6/DailyNews"
@@ -27,9 +28,14 @@ if [ "$EUID" -ne 0 ]; then
 fi
 
 # Update system
-echo "[1/8] Updating system packages..."
-apt-get update
-apt-get install -y curl git python3 python3-pip
+echo "[1/9] Updating system packages..."
+if ! command -v git &> /dev/null || ! command -v python3 &> /dev/null || ! command -v curl &> /dev/null; then
+    apt-get update
+    apt-get install -y curl git python3 python3-pip cron
+    echo "System packages installed/updated"
+else
+    echo "Required packages already installed (git, python3, curl)"
+fi
 
 # Install Node.js 22
 echo "[2/8] Installing Node.js 22..."
@@ -41,8 +47,14 @@ else
 fi
 
 # Install gemini-cli globally
-echo "[3/8] Installing gemini-cli..."
-npm install -g @google/gemini-cli
+echo "[3/9] Installing gemini-cli..."
+if ! npm list -g @google/gemini-cli &>/dev/null; then
+    npm install -g @google/gemini-cli
+    echo "gemini-cli installed"
+else
+    echo "gemini-cli already installed, updating..."
+    npm install -g @google/gemini-cli
+fi
 
 # Create service user
 echo "[4/8] Creating service user..."
@@ -59,11 +71,15 @@ mkdir -p "$DEPLOY_PATH"
 chown $SERVICE_USER:$SERVICE_USER "$DEPLOY_PATH"
 
 # Clone repository (as service user)
-echo "[6/8] Cloning repository..."
+echo "[6/9] Cloning/updating repository..."
 if [ -d "$DEPLOY_PATH/.git" ]; then
-    echo "Repository already exists, skipping clone"
-    echo "Run 'cd $DEPLOY_PATH && git pull' to update"
+    echo "Repository already exists, updating..."
+    cd "$DEPLOY_PATH"
+    sudo -u $SERVICE_USER git fetch origin || true
+    sudo -u $SERVICE_USER git reset --hard origin/main || true
+    cd - > /dev/null
 else
+    echo "Cloning repository..."
     sudo -u $SERVICE_USER git clone "$REPO_URL" "$DEPLOY_PATH"
 fi
 
@@ -97,64 +113,53 @@ else
 fi
 
 # Make script executable
-chmod +x "$DEPLOY_PATH/fetch_cyber_news.py"
+chmod +x "$DEPLOY_PATH/fetch_cyber_news.py" 2>/dev/null || true
 
-# Create systemd service
-echo "[7/8] Creating systemd service..."
-cat > /etc/systemd/system/dailynews.service << EOF
-[Unit]
-Description=DailyNews Cyber Security News Fetcher
-After=network.target
+# Setup crontab for scheduled runs
+echo "[7/9] Setting up crontab for 7am and 10am runs..."
 
-[Service]
-Type=oneshot
-User=$SERVICE_USER
-WorkingDirectory=$DEPLOY_PATH
-Environment="PATH=/usr/local/bin:/usr/bin:/bin:/usr/local/sbin:/usr/sbin:/sbin"
-ExecStart=/usr/bin/python3 $DEPLOY_PATH/fetch_cyber_news.py
-StandardOutput=journal
-StandardError=journal
+# Ensure cron is installed
+if ! command -v crontab &> /dev/null; then
+    apt-get install -y cron
+fi
 
-[Install]
-WantedBy=multi-user.target
+# Create temporary crontab file
+CRON_TEMP=$(mktemp)
+sudo -u $SERVICE_USER crontab -l > "$CRON_TEMP" 2>/dev/null || true
+
+# Remove existing DailyNews entries if they exist
+sed -i '/DailyNews/d' "$CRON_TEMP" 2>/dev/null || true
+sed -i '/fetch_cyber_news.py/d' "$CRON_TEMP" 2>/dev/null || true
+
+# Add new crontab entries
+cat >> "$CRON_TEMP" << EOF
+
+# DailyNews - Run at 7:00 AM daily
+0 7 * * * /usr/bin/python3 $DEPLOY_PATH/fetch_cyber_news.py >> $DEPLOY_PATH/cron.log 2>&1
+
+# DailyNews - Run at 10:00 AM daily
+0 10 * * * /usr/bin/python3 $DEPLOY_PATH/fetch_cyber_news.py >> $DEPLOY_PATH/cron.log 2>&1
 EOF
 
-# Create systemd timer for 7am and 10am
-cat > /etc/systemd/system/dailynews-7am.timer << EOF
-[Unit]
-Description=Run DailyNews at 7:00 AM
-Requires=dailynews.service
+# Install the crontab
+sudo -u $SERVICE_USER crontab "$CRON_TEMP"
+rm -f "$CRON_TEMP"
 
-[Timer]
-OnCalendar=*-*-* 07:00:00
-Persistent=true
+# Verify crontab was installed
+if sudo -u $SERVICE_USER crontab -l | grep -q "fetch_cyber_news.py"; then
+    echo "Crontab entries added successfully"
+    echo "Current crontab for $SERVICE_USER:"
+    sudo -u $SERVICE_USER crontab -l | grep -A 2 "DailyNews" || true
+else
+    echo "Warning: Failed to verify crontab installation"
+fi
 
-[Install]
-WantedBy=timers.target
-EOF
-
-cat > /etc/systemd/system/dailynews-10am.timer << EOF
-[Unit]
-Description=Run DailyNews at 10:00 AM
-Requires=dailynews.service
-
-[Timer]
-OnCalendar=*-*-* 10:00:00
-Persistent=true
-
-[Install]
-WantedBy=timers.target
-EOF
-
-# Reload systemd and enable timers
-systemctl daemon-reload
-systemctl enable dailynews-7am.timer
-systemctl enable dailynews-10am.timer
-systemctl start dailynews-7am.timer
-systemctl start dailynews-10am.timer
+# Ensure cron service is running
+systemctl enable cron 2>/dev/null || systemctl enable crond 2>/dev/null || true
+systemctl start cron 2>/dev/null || systemctl start crond 2>/dev/null || true
 
 # Create SSH key for CI/CD (if needed)
-echo "[8/8] Setting up SSH for CI/CD..."
+echo "[8/9] Setting up SSH for CI/CD..."
 SSH_DIR="/home/$SERVICE_USER/.ssh"
 mkdir -p "$SSH_DIR"
 chmod 700 "$SSH_DIR"
@@ -177,8 +182,14 @@ sudo -u $SERVICE_USER git -C "$DEPLOY_PATH" config user.name "DailyNews Bot" || 
 sudo -u $SERVICE_USER git -C "$DEPLOY_PATH" config user.email "dailynews@$(hostname)" || true
 
 # Create newsitems directory
+echo "[9/9] Creating newsitems directory..."
 mkdir -p "$DEPLOY_PATH/newsitems"
-chown $SERVICE_USER:$SERVICE_USER "$DEPLOY_PATH/newsitems"
+chown $SERVICE_USER:$SERVICE_USER "$DEPLOY_PATH/newsitems" 2>/dev/null || true
+
+# Create log file for cron output
+touch "$DEPLOY_PATH/cron.log"
+chown $SERVICE_USER:$SERVICE_USER "$DEPLOY_PATH/cron.log" 2>/dev/null || true
+chmod 644 "$DEPLOY_PATH/cron.log" 2>/dev/null || true
 
 echo ""
 echo "=========================================="
@@ -195,11 +206,14 @@ echo "   - Add GITEA_USERNAME and GITEA_PASSWORD"
 echo "   - Add GITHUB_TOKEN (create at https://github.com/settings/tokens)"
 echo "   - See GIT_REMOTES_SETUP.md for details"
 echo ""
-echo "3. Check timer status:"
-echo "   systemctl status dailynews-7am.timer"
-echo "   systemctl status dailynews-10am.timer"
+echo "3. Check crontab status:"
+echo "   sudo -u $SERVICE_USER crontab -l"
+echo "   systemctl status cron"
 echo ""
-echo "4. Test the script manually:"
+echo "4. View cron logs:"
+echo "   tail -f $DEPLOY_PATH/cron.log"
+echo ""
+echo "5. Test the script manually:"
 echo "   sudo -u $SERVICE_USER python3 $DEPLOY_PATH/fetch_cyber_news.py"
 echo ""
 
