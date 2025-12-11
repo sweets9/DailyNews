@@ -1,0 +1,100 @@
+name: Deploy to Production
+
+# NOTE: This workflow assumes GitHub Actions is available.
+# If your repo is on git.sweet6.net, you may need to:
+# 1. Mirror the repo to GitHub, or
+# 2. Use a self-hosted GitHub Actions runner, or
+# 3. Adapt this for your CI/CD system (GitLab CI, Jenkins, etc.)
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+      
+      - name: Install gemini-cli
+        run: npm install -g @google/gemini-cli
+      
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Deploy to production server
+        env:
+          PROD_HOST: ${{ secrets.PROD_HOST }}
+          PROD_USER: ${{ secrets.PROD_USER }}
+          PROD_SSH_KEY: ${{ secrets.PROD_SSH_KEY }}
+          PROD_DEPLOY_PATH: ${{ secrets.PROD_DEPLOY_PATH }}
+        run: |
+          # Create SSH key file
+          mkdir -p ~/.ssh
+          echo "$PROD_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          
+          # Add production server to known hosts
+          ssh-keyscan -H $PROD_HOST >> ~/.ssh/known_hosts
+          
+          # Deploy script
+          # NOTE: PROD_USER must have passwordless sudo access for package installation
+          ssh -i ~/.ssh/deploy_key $PROD_USER@$PROD_HOST << 'ENDSSH'
+            set -e
+            cd $PROD_DEPLOY_PATH || exit 1
+            
+            # Pull latest changes
+            git fetch origin
+            git reset --hard origin/main
+            
+            # Ensure Node.js 20+ is available
+            # This requires sudo access - ensure PROD_USER has passwordless sudo
+            if ! command -v node &> /dev/null || [ "$(node -v | cut -d'v' -f2 | cut -d'.' -f1)" -lt 20 ]; then
+              echo "Installing Node.js 22..."
+              curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
+              sudo apt-get install -y nodejs
+            fi
+            
+            # Install/update gemini-cli (global install may require sudo)
+            if npm list -g @google/gemini-cli &>/dev/null; then
+              sudo npm install -g @google/gemini-cli
+            else
+              npm install -g @google/gemini-cli || sudo npm install -g @google/gemini-cli
+            fi
+            
+            # Ensure Python 3 is available
+            if ! command -v python3 &> /dev/null; then
+              sudo apt-get update
+              sudo apt-get install -y python3 python3-pip
+            fi
+            
+            # Make script executable
+            chmod +x fetch_cyber_news.py
+            
+            # Update systemd service if it exists
+            if systemctl list-units --type=service | grep -q dailynews; then
+              sudo systemctl daemon-reload
+              sudo systemctl restart dailynews.service
+            fi
+            
+            echo "Deployment completed successfully"
+          ENDSSH
+      
+      - name: Cleanup
+        if: always()
+        run: rm -f ~/.ssh/deploy_key
+
