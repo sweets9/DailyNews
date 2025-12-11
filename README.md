@@ -33,5 +33,31 @@ Credentials are stored in `.env` file (excluded from git sync):
 
 See `GIT_REMOTES_SETUP.md` for detailed setup instructions.
 
+## Production Setup
+
+To set up on an Ubuntu production server:
+
+1. **Clone the repository**:
+   ```bash
+   git clone https://git.sweet6.net/Sweet6/DailyNews /opt/dailynews
+   ```
+
+2. **Run the setup script**:
+   ```bash
+   sudo bash /opt/dailynews/setup-dailynews-production.sh
+   ```
+
+3. **Configure credentials**:
+   ```bash
+   sudo -u dailynews nano /opt/dailynews/.env
+   ```
+
+The setup script will:
+- Install Node.js 22 and gemini-cli
+- Create the `dailynews` service user
+- Clone the repository (if not already cloned)
+- Set up systemd timers for 7am and 10am runs
+- Create the `.env` file from template
+
 ## Cyber Security News
 
