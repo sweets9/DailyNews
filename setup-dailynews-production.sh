@@ -119,17 +119,42 @@ fi
 # Configure git remotes with credentials from .env (if available)
 echo "Configuring git remotes with credentials..."
 if [ -f "$DEPLOY_PATH/.env" ]; then
-    # Source .env file to get credentials
-    set +a  # Don't export variables
-    source "$DEPLOY_PATH/.env" 2>/dev/null || true
-    set -a
+    # Read .env file and extract credentials
+    GITEA_USERNAME=""
+    GITEA_PASSWORD=""
+    GITHUB_USERNAME=""
+    GITHUB_TOKEN=""
+    
+    while IFS='=' read -r key value || [ -n "$key" ]; do
+        # Skip comments and empty lines
+        [[ "$key" =~ ^#.*$ ]] && continue
+        [[ -z "$key" ]] && continue
+        
+        # Remove quotes from value if present
+        value=$(echo "$value" | sed -e 's/^"//' -e 's/"$//' -e "s/^'//" -e "s/'$//")
+        
+        case "$key" in
+            GITEA_USERNAME)
+                GITEA_USERNAME="$value"
+                ;;
+            GITEA_PASSWORD)
+                GITEA_PASSWORD="$value"
+                ;;
+            GITHUB_USERNAME)
+                GITHUB_USERNAME="$value"
+                ;;
+            GITHUB_TOKEN)
+                GITHUB_TOKEN="$value"
+                ;;
+        esac
+    done < "$DEPLOY_PATH/.env"
     
     # Configure origin (Gitea) remote with credentials
     if [ -n "$GITEA_USERNAME" ] && [ -n "$GITEA_PASSWORD" ]; then
         GITEA_URL_WITH_AUTH="https://${GITEA_USERNAME}:${GITEA_PASSWORD}@git.sweet6.net/Sweet6/DailyNews"
         sudo -u $SERVICE_USER git -C "$DEPLOY_PATH" remote set-url origin "$GITEA_URL_WITH_AUTH" 2>/dev/null || \
         sudo -u $SERVICE_USER git -C "$DEPLOY_PATH" remote add origin "$GITEA_URL_WITH_AUTH" 2>/dev/null || true
-        echo "✓ Configured Gitea remote with credentials"
+        echo "✓ Configured Gitea remote with credentials (passwordless git pull enabled)"
     else
         echo "⚠ Gitea credentials not found in .env, remote may prompt for credentials"
     fi
@@ -145,10 +170,14 @@ if [ -f "$DEPLOY_PATH/.env" ]; then
         echo "⚠ GitHub token not found in .env, GitHub remote not configured"
     fi
     
-    # Test git pull to store credentials
+    # Test git fetch to verify credentials work
     echo "Testing git credentials..."
     cd "$DEPLOY_PATH"
-    sudo -u $SERVICE_USER git fetch origin 2>&1 | head -1 || true
+    if sudo -u $SERVICE_USER git fetch origin 2>&1 | grep -q "fatal\|error"; then
+        echo "⚠ Git fetch test failed - check credentials in .env file"
+    else
+        echo "✓ Git credentials verified - passwordless git pull is working"
+    fi
     cd - > /dev/null
 else
     echo "⚠ .env file not found, cannot configure git credentials automatically"
