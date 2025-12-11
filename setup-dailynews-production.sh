@@ -117,11 +117,14 @@ chmod +x "$DEPLOY_PATH/fetch_cyber_news.py" 2>/dev/null || true
 
 # Remove any existing systemd service/timer files (migrating to crontab)
 echo "[7/9] Removing old systemd services/timers (if any) and setting up crontab..."
+NEED_RELOAD=false
+
 if [ -f /etc/systemd/system/dailynews.service ]; then
     echo "Removing systemd service file..."
     systemctl stop dailynews.service 2>/dev/null || true
     systemctl disable dailynews.service 2>/dev/null || true
     rm -f /etc/systemd/system/dailynews.service
+    NEED_RELOAD=true
 fi
 
 if [ -f /etc/systemd/system/dailynews-7am.timer ]; then
@@ -129,6 +132,7 @@ if [ -f /etc/systemd/system/dailynews-7am.timer ]; then
     systemctl stop dailynews-7am.timer 2>/dev/null || true
     systemctl disable dailynews-7am.timer 2>/dev/null || true
     rm -f /etc/systemd/system/dailynews-7am.timer
+    NEED_RELOAD=true
 fi
 
 if [ -f /etc/systemd/system/dailynews-10am.timer ]; then
@@ -136,11 +140,13 @@ if [ -f /etc/systemd/system/dailynews-10am.timer ]; then
     systemctl stop dailynews-10am.timer 2>/dev/null || true
     systemctl disable dailynews-10am.timer 2>/dev/null || true
     rm -f /etc/systemd/system/dailynews-10am.timer
+    NEED_RELOAD=true
 fi
 
 # Reload systemd if any files were removed
-if [ -f /etc/systemd/system/dailynews.service ] || [ -f /etc/systemd/system/dailynews-7am.timer ] || [ -f /etc/systemd/system/dailynews-10am.timer ]; then
+if [ "$NEED_RELOAD" = true ]; then
     systemctl daemon-reload 2>/dev/null || true
+    echo "Systemd daemon reloaded"
 fi
 
 # Setup crontab for scheduled runs
