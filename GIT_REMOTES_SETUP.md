@@ -24,7 +24,7 @@ Since Gitea push mirroring is not available, the script pushes directly to both 
 
 1. Copy the example file:
    ```bash
-   cd /opt/dailynews  # or your deployment path
+   cd /opt/DailyNews  # or your deployment path
    cp .env.example .env
    ```
 

@@ -4,12 +4,12 @@
 # Run this script on your Ubuntu production server to set up the DailyNews deployment
 #
 # Usage: ./setup-dailynews-production.sh [DEPLOY_PATH]
-#   DEPLOY_PATH: Where to deploy the repository (default: /opt/dailynews)
+#   DEPLOY_PATH: Where to deploy the repository (default: /opt/DailyNews)
 #
 
 set -e
 
-DEPLOY_PATH="${1:-/opt/dailynews}"
+DEPLOY_PATH="${1:-/opt/DailyNews}"
 REPO_URL="https://git.sweet6.net/Sweet6/DailyNews"
 SERVICE_USER="${SERVICE_USER:-dailynews}"
 

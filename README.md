@@ -39,17 +39,17 @@ To set up on an Ubuntu production server:
 
 1. **Clone the repository**:
    ```bash
-   git clone https://git.sweet6.net/Sweet6/DailyNews /opt/dailynews
+   git clone https://git.sweet6.net/Sweet6/DailyNews /opt/DailyNews
    ```
 
 2. **Run the setup script**:
    ```bash
-   sudo bash /opt/dailynews/setup-dailynews-production.sh
+   sudo bash /opt/DailyNews/setup-dailynews-production.sh
    ```
 
 3. **Configure credentials**:
    ```bash
-   sudo -u dailynews nano /opt/dailynews/.env
+   sudo -u dailynews nano /opt/DailyNews/.env
    ```
 
 The setup script will:
