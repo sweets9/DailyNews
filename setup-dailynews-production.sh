@@ -78,9 +78,21 @@ if [ -d "$DEPLOY_PATH/.git" ]; then
     sudo -u $SERVICE_USER git fetch origin || true
     sudo -u $SERVICE_USER git reset --hard origin/main || true
     cd - > /dev/null
+    echo "✓ Repository updated"
 else
     echo "Cloning repository..."
     sudo -u $SERVICE_USER git clone "$REPO_URL" "$DEPLOY_PATH"
+    if [ $? -eq 0 ]; then
+        echo "✓ Repository cloned successfully"
+    else
+        echo "⚠ Warning: Repository clone may have failed"
+    fi
+fi
+
+# Ensure we're using the correct path (capital D, capital N)
+if [ "$DEPLOY_PATH" != "/opt/DailyNews" ] && [ -d "/opt/DailyNews/.git" ]; then
+    echo "⚠ Warning: Repository found at /opt/DailyNews but DEPLOY_PATH is $DEPLOY_PATH"
+    echo "   Consider using /opt/DailyNews as the deploy path"
 fi
 
 # Configure git for service user (needed for pushing)
