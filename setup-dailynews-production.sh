@@ -115,8 +115,35 @@ fi
 # Make script executable
 chmod +x "$DEPLOY_PATH/fetch_cyber_news.py" 2>/dev/null || true
 
+# Remove any existing systemd service/timer files (migrating to crontab)
+echo "[7/9] Removing old systemd services/timers (if any) and setting up crontab..."
+if [ -f /etc/systemd/system/dailynews.service ]; then
+    echo "Removing systemd service file..."
+    systemctl stop dailynews.service 2>/dev/null || true
+    systemctl disable dailynews.service 2>/dev/null || true
+    rm -f /etc/systemd/system/dailynews.service
+fi
+
+if [ -f /etc/systemd/system/dailynews-7am.timer ]; then
+    echo "Removing systemd 7am timer..."
+    systemctl stop dailynews-7am.timer 2>/dev/null || true
+    systemctl disable dailynews-7am.timer 2>/dev/null || true
+    rm -f /etc/systemd/system/dailynews-7am.timer
+fi
+
+if [ -f /etc/systemd/system/dailynews-10am.timer ]; then
+    echo "Removing systemd 10am timer..."
+    systemctl stop dailynews-10am.timer 2>/dev/null || true
+    systemctl disable dailynews-10am.timer 2>/dev/null || true
+    rm -f /etc/systemd/system/dailynews-10am.timer
+fi
+
+# Reload systemd if any files were removed
+if [ -f /etc/systemd/system/dailynews.service ] || [ -f /etc/systemd/system/dailynews-7am.timer ] || [ -f /etc/systemd/system/dailynews-10am.timer ]; then
+    systemctl daemon-reload 2>/dev/null || true
+fi
+
 # Setup crontab for scheduled runs
-echo "[7/9] Setting up crontab for 7am and 10am runs..."
 
 # Ensure cron is installed
 if ! command -v crontab &> /dev/null; then
