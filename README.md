@@ -80,6 +80,7 @@ This will:
 **Note**: Always use `/opt/DailyNews` (capital D and N) as the deployment path.
 
 ## Cyber Security News
+- [2026-01-27 10:01](newsitems/CyberNews-2026-01-27_10:01.md)
 - [2026-01-27 07:01](newsitems/CyberNews-2026-01-27_07:01.md)
 - [2026-01-26 10:00](newsitems/CyberNews-2026-01-26_10:00.md)
 - [2026-01-26 07:01](newsitems/CyberNews-2026-01-26_07:01.md)
